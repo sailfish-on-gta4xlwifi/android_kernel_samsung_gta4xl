@@ -93,8 +93,8 @@ static int	audit_initialized;
 #define AUDIT_LOCKED	2
 /* Default state when kernel boots without any parameters. */
 // [ SEC_SELINUX_PORTING_COMMON
-u32		audit_enabled = AUDIT_ON;
-u32		audit_ever_enabled = !!AUDIT_ON;
+u32		audit_enabled = AUDIT_OFF;
+u32		audit_ever_enabled = !!AUDIT_OFF;
 // ] SEC_SELINUX_PORTING_COMMON
 
 EXPORT_SYMBOL_GPL(audit_enabled);
