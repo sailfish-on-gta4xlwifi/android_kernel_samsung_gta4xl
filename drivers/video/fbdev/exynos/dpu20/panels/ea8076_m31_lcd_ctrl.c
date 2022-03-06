@@ -29,10 +29,6 @@
 #include "ea8076_m31_mdnie.h"
 #endif
 
-#if defined(CONFIG_SUPPORT_POC_FLASH)
-#include "ea8076_a51_poc.h"
-#endif
-
 #if defined(CONFIG_DISPLAY_USE_INFO)
 #include "dpui.h"
 
@@ -151,11 +147,6 @@ struct lcd_info {
 	struct work_struct		conn_work;
 
 	struct timenval			tnv[2];
-
-#if defined(CONFIG_SUPPORT_POC_FLASH)
-	struct panel_poc_device		poc_dev;
-	unsigned char			poc_mca[LDI_LEN_MCA_CHECK];
-#endif
 };
 
 static int dsim_write_hl_data(struct lcd_info *lcd, const u8 *cmd, u32 cmdsize)
@@ -861,22 +852,6 @@ static int ea8076_read_rddsm(struct lcd_info *lcd)
 	return ret;
 }
 
-#if defined(CONFIG_SUPPORT_POC_FLASH)
-static int ea8076_read_mca_check(struct lcd_info *lcd)
-{
-	int ret = 0;
-	unsigned char buf[LDI_LEN_MCA_CHECK] = {0, };
-
-	ret = dsim_read_info(lcd, LDI_REG_MCA_CHECK, LDI_LEN_MCA_CHECK, buf);
-	if (ret < 0)
-		dev_info(&lcd->ld->dev, "%s: fail\n", __func__);
-
-	memcpy(lcd->poc_mca, buf, LDI_LEN_MCA_CHECK);
-
-	return ret;
-}
-#endif
-
 static int ea8076_read_init_info(struct lcd_info *lcd)
 {
 	int ret = 0;
@@ -1155,14 +1130,6 @@ static int ea8076_probe(struct lcd_info *lcd)
 	ret = ea8076_read_init_info(lcd);
 	if (ret < 0)
 		dev_info(&lcd->ld->dev, "%s: failed to init information\n", __func__);
-
-#if defined(CONFIG_SUPPORT_POC_FLASH)
-	lcd->poc_dev.dsim = lcd->dsim;
-	lcd->poc_dev.lock = &lcd->lock;
-	ret = panel_poc_probe(&lcd->poc_dev);
-	if (ret)
-		dev_err(&lcd->ld->dev, "%s : failed to probe poc_device", __func__);
-#endif
 
 	dsim_panel_set_brightness(lcd, 1);
 
@@ -1460,7 +1427,7 @@ static ssize_t enable_fd_store(struct device *dev,
 	dev_info(&lcd->ld->dev, "%s: %d\n", __func__, value);
 
 	mutex_lock(&lcd->lock);
-	decon_abd_pin_enable(decon, 0);
+	decon_abd_enable(&decon->abd, 0);
 	if (value) {
 		DSI_WRITE(SEQ_TEST_KEY_ON_F0, ARRAY_SIZE(SEQ_TEST_KEY_ON_F0));
 		DSI_WRITE(SEQ_ASWIRE_OFF, ARRAY_SIZE(SEQ_ASWIRE_OFF));
@@ -1471,7 +1438,7 @@ static ssize_t enable_fd_store(struct device *dev,
 		DSI_WRITE(SEQ_TEST_KEY_OFF_F0, ARRAY_SIZE(SEQ_TEST_KEY_OFF_F0));
 	}
 	msleep(120);
-	decon_abd_pin_enable(decon, 1);
+	decon_abd_enable(&decon->abd, 1);
 	mutex_unlock(&lcd->lock);
 
 	return size;
@@ -1592,7 +1559,7 @@ static ssize_t alpm_store(struct device *dev,
 	lcd->alpm = lpm;
 	mutex_unlock(&lcd->lock);
 
-	decon_abd_pin_enable(decon, 0);
+	decon_abd_enable(&decon->abd, 0);
 	switch (lpm.mode) {
 	case ALPM_OFF:
 		if (lcd->prev_brightness) {
@@ -1628,7 +1595,7 @@ static ssize_t alpm_store(struct device *dev,
 		mutex_unlock(&lcd->lock);
 		break;
 	}
-	decon_abd_pin_enable(decon, 1);
+	decon_abd_enable(&decon->abd, 1);
 
 	unlock_fb_info(fbinfo);
 
@@ -1747,72 +1714,6 @@ static ssize_t actual_mask_brightness_show(struct device *dev,
 static DEVICE_ATTR(actual_mask_brightness, 0444, actual_mask_brightness_show, NULL);
 #endif
 
-#if defined(CONFIG_SUPPORT_POC_FLASH)
-static ssize_t poc_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	return strlen(buf);
-}
-
-static ssize_t poc_store(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t size)
-{
-	struct lcd_info *lcd = dev_get_drvdata(dev);
-	struct panel_poc_device *poc_dev;
-	struct panel_poc_info *poc_info;
-	int ret;
-	unsigned int cmd, addr, len;
-
-	if (lcd->state != PANEL_STATE_RESUMED) {
-		dev_info(&lcd->ld->dev, "%s: panel state is %d\n", __func__, lcd->state);
-		return -EINVAL;
-	}
-
-	poc_dev = &lcd->poc_dev;
-	poc_info = &poc_dev->poc_info;
-
-	ret = sscanf(buf, "%8d %8d %8d\n", &cmd, &addr, &len);
-	if ((ret != 3) || (cmd != POC_OP_SECTOR_ERASE) || (len != POC_TOTAL_SIZE)) {
-		dev_info(&lcd->ld->dev, "%s: err! cmd: [%d] ret: [%d] len: [%d]\n", __func__, cmd, ret, len);
-		return ret;
-	}
-
-	if (cmd == POC_OP_SECTOR_ERASE)
-		poc_erase(poc_dev, addr, len);
-
-	dev_info(&lcd->ld->dev, "%s: poc_op %d\n", __func__, cmd);
-
-	return size;
-}
-
-static ssize_t poc_mca_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	struct lcd_info *lcd = dev_get_drvdata(dev);
-	int ret = 0;
-	unsigned int i = 0;
-
-	if (lcd->state != PANEL_STATE_RESUMED) {
-		dev_info(&lcd->ld->dev, "%s: state is %d\n", __func__, lcd->state);
-		return -EINVAL;
-	}
-
-	DSI_WRITE(SEQ_TEST_KEY_ON_F0, ARRAY_SIZE(SEQ_TEST_KEY_ON_F0));
-	ea8076_read_mca_check(lcd);
-	DSI_WRITE(SEQ_TEST_KEY_OFF_F0, ARRAY_SIZE(SEQ_TEST_KEY_OFF_F0));
-
-	for (i = 0; i < LDI_LEN_MCA_CHECK; i++) {
-		dev_info(&lcd->ld->dev, "%s C4[%d]: 0x%02x\n", __func__, i, lcd->poc_mca[i]);
-		snprintf(buf, PAGE_SIZE, "%s%02X ", buf, lcd->poc_mca[i]);
-	}
-
-	return strlen(buf);
-}
-
-static DEVICE_ATTR(poc, 0664, poc_show, poc_store);
-static DEVICE_ATTR(poc_mca, 0444, poc_mca_show, NULL);
-#endif
-
 static DEVICE_ATTR(lcd_type, 0444, lcd_type_show, NULL);
 static DEVICE_ATTR(window_type, 0444, window_type_show, NULL);
 static DEVICE_ATTR(manufacture_code, 0444, manufacture_code_show, NULL);
@@ -1861,10 +1762,6 @@ static struct attribute *lcd_sysfs_attributes[] = {
 	&dev_attr_actual_mask_brightness.attr,
 #endif
 	&dev_attr_brt_avg.attr,
-#if defined(CONFIG_SUPPORT_POC_FLASH)
-	&dev_attr_poc.attr,
-	&dev_attr_poc_mca.attr,
-#endif
 	NULL,
 };
 
@@ -1978,14 +1875,14 @@ static int dsim_panel_probe(struct dsim_device *dsim)
 		goto exit;
 	}
 
-	lcd->ld = lcd_device_register("panel", dsim->dev, lcd, NULL);
+	lcd->ld = exynos_lcd_device_register("panel", dsim->dev, lcd, NULL);
 	if (IS_ERR(lcd->ld)) {
 		pr_err("%s: failed to register lcd device\n", __func__);
 		ret = PTR_ERR(lcd->ld);
 		goto exit;
 	}
 
-	lcd->bd = backlight_device_register("panel", dsim->dev, lcd, &panel_backlight_ops, NULL);
+	lcd->bd = exynos_backlight_device_register("panel", dsim->dev, lcd, &panel_backlight_ops, NULL);
 	if (IS_ERR(lcd->bd)) {
 		pr_err("%s: failed to register backlight device\n", __func__);
 		ret = PTR_ERR(lcd->bd);
@@ -2273,6 +2170,7 @@ static DEVICE_ATTR(conn_det, 0644, conn_det_show, conn_det_store);
 static void panel_conn_register(struct lcd_info *lcd)
 {
 	struct decon_device *decon = get_decon_drvdata(0);
+	struct abd_protect *abd = &decon->abd;
 	int gpio = 0, gpio_active = 0;
 
 	if (!decon) {
@@ -2305,58 +2203,44 @@ static void panel_conn_register(struct lcd_info *lcd)
 		return;
 	}
 
-	decon_abd_pin_register_handler(gpio_to_irq(gpio), panel_conn_det_handler, lcd);
+	decon_abd_pin_register_handler(abd, gpio_to_irq(gpio), panel_conn_det_handler, lcd);
 
 	if (!IS_ENABLED(CONFIG_SEC_FACTORY))
 		return;
 
-	decon_abd_con_register(decon);
+	decon_abd_con_register(abd);
 	device_create_file(&lcd->ld->dev, &dev_attr_conn_det);
-}
-
-static int match_dev_name(struct device *dev, void *data)
-{
-	const char *keyword = data;
-
-	return dev_name(dev) ? !!strstr(dev_name(dev), keyword) : 0;
-}
-
-static struct device *find_lcd_device(void)
-{
-	struct platform_device *pdev = NULL;
-	struct device *dev = NULL;
-
-	pdev = of_find_dsim_platform_device();
-	if (!pdev) {
-		dsim_info("%s: of_find_device_by_node fail\n", __func__);
-		return NULL;
-	}
-
-	dev = device_find_child(&pdev->dev, "panel", match_dev_name);
-	if (!dev) {
-		dsim_info("%s: device_find_child fail\n", __func__);
-		return NULL;
-	}
-
-	if (dev)
-		put_device(dev);
-
-	return dev;
 }
 
 static int __init panel_conn_init(void)
 {
-	struct device *dev = find_lcd_device();
 	struct lcd_info *lcd = NULL;
+	struct dsim_device *pdata = NULL;
+	struct platform_device *pdev = NULL;
 
-	if (!dev) {
-		decon_info("find_lcd_device fail\n");
+	pdev = of_find_dsim_platform_device();
+	if (!pdev) {
+		dsim_info("%s: of_find_dsim_platform_device fail\n", __func__);
 		return 0;
 	}
 
-	lcd = dev_get_drvdata(dev);
+	pdata = platform_get_drvdata(pdev);
+	if (!pdata) {
+		dsim_info("%s: platform_get_drvdata fail\n", __func__);
+		return 0;
+	}
+
+	if (!pdata->panel_ops) {
+		dsim_info("%s: panel_ops invalid\n", __func__);
+		return 0;
+	}
+
+	if (pdata->panel_ops != this_driver)
+		return 0;
+
+	lcd = pdata->priv.par;
 	if (!lcd) {
-		decon_info("lcd_info invalid\n");
+		dsim_info("lcd_info invalid\n");
 		return 0;
 	}
 
@@ -2365,8 +2249,9 @@ static int __init panel_conn_init(void)
 		panel_conn_register(lcd);
 	}
 
+	dev_info(&lcd->ld->dev, "%s: %s: done\n", kbasename(__FILE__), __func__);
+
 	return 0;
 }
-
 late_initcall_sync(panel_conn_init);
 

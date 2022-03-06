@@ -443,10 +443,22 @@ struct decon_reg_data {
 	int mres_idx;
 };
 
+struct decon_win_config_extra {
+	int remained_frames;
+	u32 reserved[7];
+};
+
+struct decon_win_config_data_old {
+	int	retire_fence;
+	int	fd_odma;
+	struct decon_win_config config[MAX_DECON_WIN + 1];
+};
+
 struct decon_win_config_data {
 	int	retire_fence;
 	int	fd_odma;
 	struct decon_win_config config[MAX_DECON_WIN + 1];
+	struct decon_win_config_extra extra;
 };
 
 enum hwc_ver {
@@ -780,6 +792,7 @@ struct decon_update_regs {
 	struct task_struct *thread;
 	struct kthread_worker worker;
 	struct kthread_work work;
+	atomic_t remaining_frame;
 };
 
 struct decon_vsync {
@@ -811,6 +824,7 @@ struct decon_hiber {
 	u32 enter_cnt;
 	u32 exit_cnt;
 	bool enabled;
+	atomic_t remaining_hiber;
 };
 
 struct decon_win_update {
@@ -892,6 +906,8 @@ struct decon_device {
 #if defined(CONFIG_SUPPORT_MASK_LAYER)
 	bool current_mask_layer;
 	struct decon_reg_data *mask_regs;
+	u32 wait_mask_layer_trigger;
+	wait_queue_head_t wait_mask_layer_trigger_queue;
 #endif
 	unsigned int partial_force_disable;
 
@@ -965,6 +981,7 @@ struct decon_device {
 	enum hwc_ver ver;
 	/* systrace */
 	struct decon_systrace_data systrace;
+	int	update_regs_list_cnt;
 
 	bool mres_enabled;
 	bool low_persistence;
@@ -1361,6 +1378,8 @@ int decon_update_last_regs(struct decon_device *decon,
 /* IOCTL commands */
 #define S3CFB_SET_VSYNC_INT		_IOW('F', 206, __u32)
 #define S3CFB_DECON_SELF_REFRESH	_IOW('F', 207, __u32)
+#define S3CFB_WIN_CONFIG_OLD		_IOW('F', 209, \
+						struct decon_win_config_data_old)
 #define S3CFB_WIN_CONFIG		_IOW('F', 209, \
 						struct decon_win_config_data)
 
