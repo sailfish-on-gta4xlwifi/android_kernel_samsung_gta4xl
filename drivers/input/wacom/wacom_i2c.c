@@ -66,7 +66,7 @@ void forced_release(struct wacom_i2c *wac_i2c)
 	input_report_abs(wac_i2c->input_dev, ABS_Y, 0);
 	input_report_abs(wac_i2c->input_dev, ABS_PRESSURE, 0);
 	input_report_key(wac_i2c->input_dev, BTN_STYLUS, 0);
-	input_report_key(wac_i2c->input_dev, BTN_TOUCH, 0);
+	input_report_key(wac_i2c->input_dev, BTN_LEFT, 0);
 	/* prevent invalid operation of input booster */
 	input_sync(wac_i2c->input_dev);
 
@@ -1144,7 +1144,7 @@ int wacom_i2c_coord(struct wacom_i2c *wac_i2c)
 			wac_i2c->keyboard_area == true &&
 			wac_i2c->virtual_tracking == EPEN_POS_VIEW) {
 			input_report_key(wac_i2c->input_dev, BTN_STYLUS, 0);
-			input_report_key(wac_i2c->input_dev, BTN_TOUCH, 0);
+			input_report_key(wac_i2c->input_dev, BTN_LEFT, 0);
 			input_report_abs(wac_i2c->input_dev, ABS_PRESSURE, 0);
 			input_sync(wac_i2c->input_dev);
 
@@ -1167,7 +1167,7 @@ int wacom_i2c_coord(struct wacom_i2c *wac_i2c)
 		input_report_abs(wac_i2c->input_dev, ABS_X, x);
 		input_report_abs(wac_i2c->input_dev, ABS_Y, y);
 		input_report_key(wac_i2c->input_dev, BTN_STYLUS, stylus);
-		input_report_key(wac_i2c->input_dev, BTN_TOUCH, prox);
+		input_report_key(wac_i2c->input_dev, BTN_LEFT, prox);
 
 		input_report_abs(wac_i2c->input_dev, ABS_PRESSURE, pressure);
 		input_report_abs(wac_i2c->input_dev, ABS_DISTANCE, height);
@@ -1211,7 +1211,7 @@ int wacom_i2c_coord(struct wacom_i2c *wac_i2c)
 	} else {
 		if (wac_i2c->pen_prox) {
 			input_report_key(wac_i2c->input_dev, BTN_STYLUS, 0);
-			input_report_key(wac_i2c->input_dev, BTN_TOUCH, 0);
+			input_report_key(wac_i2c->input_dev, BTN_LEFT, 0);
 			input_report_abs(wac_i2c->input_dev, ABS_PRESSURE, 0);
 			input_sync(wac_i2c->input_dev);
 
@@ -1781,11 +1781,11 @@ static irqreturn_t wacom_interrupt(int irq, void *dev_id)
 					input_sync(wac_i2c->input_dev);
 
 					input_report_abs(wac_i2c->input_dev, ABS_PRESSURE, pressure);
-					input_report_key(wac_i2c->input_dev, BTN_TOUCH, 1);
+					input_report_key(wac_i2c->input_dev, BTN_LEFT, 1);
 					input_sync(wac_i2c->input_dev);
 
 					input_report_abs(wac_i2c->input_dev, ABS_PRESSURE, 0);
-					input_report_key(wac_i2c->input_dev, BTN_TOUCH, 0);
+					input_report_key(wac_i2c->input_dev, BTN_LEFT, 0);
 					input_sync(wac_i2c->input_dev);
 
 					input_report_key(wac_i2c->input_dev, wac_i2c->tool, 0);
@@ -2012,7 +2012,7 @@ static void wacom_i2c_set_input_values(struct wacom_i2c *wac_i2c,
 
 	input_set_capability(input_dev, EV_KEY, BTN_TOOL_PEN);
 	input_set_capability(input_dev, EV_KEY, BTN_TOOL_RUBBER);
-	input_set_capability(input_dev, EV_KEY, BTN_TOUCH);
+	input_set_capability(input_dev, EV_KEY, BTN_LEFT);
 	input_set_capability(input_dev, EV_KEY, BTN_STYLUS);
 
 	input_set_capability(input_dev, EV_SW, SW_PEN_INSERT);
